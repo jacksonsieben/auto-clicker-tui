@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "advanced-auto-clicker-tui"
+dynamic = ["version"]
+description = "A cross-platform auto clicker that runs in your terminal"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Jackson Sieben" }]
+keywords = ["autoclicker", "tui", "terminal", "automation", "clicker"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+]
+
+dependencies = [
+    "textual>=0.79",
+    # pynput's own Linux metadata pulls in evdev, which is source-only and needs
+    # a C toolchain the target machines will not have. The X11 backend never
+    # imports it, so on Linux we install pynput's real requirements here and
+    # let the installer add pynput itself with --no-deps (see README).
+    "pynput>=1.7.6; sys_platform != 'linux'",
+    "python-xlib>=0.33; sys_platform == 'linux'",
+    "six; sys_platform == 'linux'",
+]
+
+[project.optional-dependencies]
+# For Linux machines that do have a compiler and want a single-command install.
+linux-full = ["pynput>=1.7.6"]
+build = ["pyinstaller>=6.0"]
+
+[project.scripts]
+autoclicker = "autoclicker.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jacksonsieben/auto-clicker-tui"
+Issues = "https://github.com/jacksonsieben/auto-clicker-tui/issues"
+
+[tool.hatch.version]
+path = "src/autoclicker/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autoclicker"]
+
+[tool.semantic_release]
+version_variables = ["src/autoclicker/version.py:__version__"]
+build_command = "echo 'No build required'"
+major_on_zero = true
+branch = "master"
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "style", "refactor", "test"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+
+[tool.semantic_release.branches.master]
+match = "(main|master)"
+prerelease = false

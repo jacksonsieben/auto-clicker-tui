@@ -1,0 +1,105 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          # pynput's Linux metadata wants evdev, which ships source-only. The
+          # X11 backend never imports it, so install pynput without its deps.
+          pip install --no-deps pynput
+          pip install pytest
+      - run: pytest -q
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            artifact: autoclicker-linux
+          - os: windows-latest
+            target: windows
+            artifact: autoclicker-windows
+          - os: macos-latest
+            target: macos
+            artifact: autoclicker-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install (Linux)
+        if: matrix.target == 'linux'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[build]'
+          pip install --no-deps pynput
+
+      - name: Install (Windows/macOS)
+        if: matrix.target != 'linux'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[build]"
+
+      - name: Build one-file binary
+        run: python scripts/build.py
+
+      - name: Build folder fallback (Windows)
+        if: matrix.target == 'windows'
+        run: python scripts/build.py --onedir
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = "windows" ]; then
+            ./dist/autoclicker-windows.exe --version
+          else
+            chmod +x ./dist/${{ matrix.artifact }}
+            ./dist/${{ matrix.artifact }} --version
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/autoclicker-linux
+            dist/autoclicker-macos
+            dist/autoclicker-windows.exe
+            dist/autoclicker-windows-folder.zip
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

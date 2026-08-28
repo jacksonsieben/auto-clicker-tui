@@ -1,0 +1,136 @@
+Screen {
+    layers: base overlay;
+}
+
+#tabs {
+    height: 1fr;
+}
+
+.pane {
+    padding: 1 2;
+}
+
+.section {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.hint {
+    color: $text-muted;
+    margin-top: 1;
+}
+
+.field-row {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.field {
+    width: auto;
+    height: auto;
+    margin-right: 2;
+}
+
+.field-wide {
+    width: 1fr;
+    height: auto;
+    margin-right: 2;
+    max-width: 40;
+}
+
+.number {
+    width: 12;
+}
+
+.hotkey-input {
+    width: 100%;
+}
+
+.toggle-row {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.toggle-label {
+    margin-left: 2;
+    padding-top: 1;
+}
+
+Rule {
+    margin: 1 0;
+}
+
+RadioSet {
+    border: none;
+    padding: 0;
+    height: auto;
+}
+
+#profile-list {
+    height: 8;
+    margin-bottom: 1;
+    border: round $panel-lighten-2;
+}
+
+#statusbar {
+    dock: bottom;
+    height: auto;
+    padding: 0 2;
+    background: $panel;
+}
+
+#status-line {
+    height: 1;
+    padding: 0 1;
+}
+
+#controls {
+    height: auto;
+    padding-bottom: 1;
+}
+
+#controls Button {
+    width: 1fr;
+    margin-right: 2;
+}
+
+#help-text {
+    padding: 0 1;
+}
+
+/* Modals */
+
+ConfirmScreen, CaptureScreen, HotkeyCaptureScreen, LocationCaptureScreen {
+    align: center middle;
+    background: $background 70%;
+}
+
+#modal-body {
+    width: 62;
+    height: auto;
+    padding: 2 3;
+    background: $surface;
+    border: thick $accent;
+}
+
+#modal-message {
+    text-style: bold;
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#modal-hint {
+    color: $text-muted;
+    width: 100%;
+    margin-bottom: 2;
+}
+
+#modal-buttons {
+    height: auto;
+    align-horizontal: right;
+}
+
+#modal-buttons Button {
+    margin-left: 2;
+}
