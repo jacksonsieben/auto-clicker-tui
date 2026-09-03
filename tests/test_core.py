@@ -292,13 +292,29 @@ def test_lock_support_is_a_string():
 # --- keeper --------------------------------------------------------------
 
 
+# key_for reaches into pynput's key table, which only exists once the input
+# backend has imported. On a headless box (CI included) there is nothing to
+# assert about, so these skip rather than fail.
+needs_backend = pytest.mark.skipif(
+    not backend.AVAILABLE, reason=f"input backend unavailable: {backend.UNAVAILABLE_REASON}"
+)
+
+
+@needs_backend
 def test_keeper_keys_all_resolve():
     for name in backend.KEEPER_KEYS:
         assert backend.key_for(name) is not None
 
 
+@needs_backend
 def test_key_for_falls_back_to_shift():
     assert backend.key_for("nonsense-key") is backend.key_for("shift")
+
+
+def test_key_for_reports_an_unavailable_backend(monkeypatch):
+    monkeypatch.setattr(backend, "keyboard", None)
+    with pytest.raises(RuntimeError):
+        backend.key_for("f15")
 
 
 def test_keeper_config_round_trip():

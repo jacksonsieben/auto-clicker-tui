@@ -26,7 +26,13 @@ jobs:
           # X11 backend never imports it, so install pynput without its deps.
           pip install --no-deps pynput
           pip install pytest
-      - run: pytest -q
+      - name: Install Xvfb
+        # pynput's X11 backend refuses to import without a display, which would
+        # skip every test that touches it. A virtual display lets them run.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+      - run: xvfb-run -a pytest -q
 
   build:
     needs: test
