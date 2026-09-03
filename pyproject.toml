@@ -32,11 +32,18 @@ dependencies = [
     "pynput>=1.7.6; sys_platform != 'linux'",
     "python-xlib>=0.33; sys_platform == 'linux'",
     "six; sys_platform == 'linux'",
+    # System-tray icon for background mode. Windows only by default: pystray
+    # needs PyObjC on macOS and AppIndicator/GTK on Linux, and background mode
+    # runs headless (hotkeys only) without it. Install the "tray" extra there.
+    "pystray>=0.19.5; sys_platform == 'win32'",
+    "pillow>=9.0; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
 # For Linux machines that do have a compiler and want a single-command install.
 linux-full = ["pynput>=1.7.6"]
+# A tray icon on macOS and Linux, where it is not installed by default.
+tray = ["pystray>=0.19.5", "pillow>=9.0"]
 build = ["pyinstaller>=6.0"]
 
 [project.scripts]

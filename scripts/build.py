@@ -29,7 +29,8 @@ PLATFORM_NAMES = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}
 
 # Imported through pynput's backend indirection, so PyInstaller cannot see them.
 HIDDEN_IMPORTS = {
-    "windows": ["pynput.keyboard._win32", "pynput.mouse._win32"],
+    # pystray picks its backend the same way, and only Windows ships with one.
+    "windows": ["pynput.keyboard._win32", "pynput.mouse._win32", "pystray._win32"],
     "macos": ["pynput.keyboard._darwin", "pynput.mouse._darwin"],
     "linux": ["pynput.keyboard._xorg", "pynput.mouse._xorg"],
 }
@@ -39,7 +40,10 @@ HIDDEN_IMPORTS = {
 COLLECT_ALL = ["textual"]
 
 # Nothing here is used, and tkinter in particular is large and often absent.
-EXCLUDES = ["tkinter", "PIL", "numpy", "pytest", "setuptools", "pip"]
+EXCLUDES = ["tkinter", "numpy", "pytest", "setuptools", "pip"]
+
+# Pillow draws the tray icon, so it only earns its size on Windows.
+PLATFORM_EXCLUDES = {"windows": [], "macos": ["PIL"], "linux": ["PIL"]}
 
 
 def target() -> str:
@@ -109,7 +113,7 @@ def main() -> int:
         cmd += ["--hidden-import", module]
     for package in COLLECT_ALL:
         cmd += ["--collect-all", package]
-    for module in EXCLUDES:
+    for module in EXCLUDES + PLATFORM_EXCLUDES[os_name]:
         cmd += ["--exclude-module", module]
     cmd.append(str(ROOT / "scripts" / "entry.py"))
 

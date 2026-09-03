@@ -34,6 +34,8 @@ macOS and Linux, installs without admin rights, and needs no GUI toolkit.
   clicking without you
 - **Global hotkeys** that work while another window has focus (default `F6` /
   `F7` / `F8`)
+- **Background mode** — close the terminal and keep clicking, from a system
+  tray icon on Windows
 - Named profiles, plus automatic restore of your last session
 
 ## Install
@@ -101,6 +103,11 @@ autoclicker --profile grind     # start from a saved profile
 autoclicker --list-profiles
 autoclicker --check             # report whether input and lock detection work here
 autoclicker --config-dir
+
+autoclicker --background        # run with no terminal, in the system tray
+autoclicker --background --start          # ...and start clicking straight away
+autoclicker --background --stay-online    # ...or start staying online
+autoclicker --stop-background   # stop the background instance
 ```
 
 ### Keys
@@ -113,6 +120,7 @@ autoclicker --config-dir
 | `Ctrl+R` | Start / stop clicking (in-app) |
 | `Ctrl+T` | Start / stop staying online (in-app) |
 | `Ctrl+S` | Save settings |
+| `Ctrl+B` | Send to the system tray and close the window |
 | `F1` | Help |
 | `Ctrl+Q` | Quit |
 | `Tab` / `Shift+Tab` | Move between fields |
@@ -120,6 +128,49 @@ autoclicker --config-dir
 All three global hotkeys are rebindable — the first two on the **Advanced**
 tab, the third on **Stay online**. Press *Record* and hit the combination you
 want.
+
+## Background mode
+
+The terminal window is only in the way once everything is set up, so
+**`Ctrl+B`** hands the current settings to a process that has no terminal at
+all and closes the window. Anything that was running keeps running. The same
+process can be started without opening the TUI at all:
+
+```bash
+autoclicker --background --start
+```
+
+Only one background instance runs at a time, so it cannot end up fighting
+itself over the mouse, and the global hotkeys (`F6` / `F7` / `F8`) work exactly
+as they do in the window.
+
+### The tray icon
+
+On **Windows** the background process shows up in the system tray, and the icon
+is coloured by what it is doing — grey idle, green clicking, amber waiting for
+you to go idle, blue staying online. Hover for a count, right-click for the
+menu:
+
+| Menu item | |
+| --- | --- |
+| Start / stop clicking | Also what a double-click on the icon does |
+| Start / stop staying online | |
+| Stop everything | |
+| Open settings window | Reopens the TUI and leaves the tray, so the two never fight over the hotkeys |
+| Quit | |
+
+On **macOS and Linux** the icon needs `pystray`, which is not installed by
+default there — it pulls in PyObjC on macOS and AppIndicator/GTK on Linux, and
+a Wayland desktop may have nowhere to dock an icon at all. Without it,
+`--background` still detaches and the global hotkeys still work; there is just
+nothing to click on, so `autoclicker --stop-background` is how you end it. To
+try the icon anyway:
+
+```bash
+pip install --user 'advanced-auto-clicker-tui[tray]'
+```
+
+`autoclicker --check` reports which of the two you get on this machine.
 
 ## Stay online
 

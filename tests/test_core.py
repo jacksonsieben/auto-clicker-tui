@@ -1,13 +1,15 @@
 """Tests for the parts that must behave identically on all three platforms."""
 
+import os
+import sys
 import threading
 import time
 
 import pytest
 
-from autoclicker import backend, hotkeys, session
+from autoclicker import backend, hotkeys, session, tray
 from autoclicker.config import Config
-from autoclicker.engine import ActivityMonitor, Engine, Keeper, StopReason
+from autoclicker.engine import ActivityMonitor, Engine, Keeper, State, StopReason
 
 
 # -- hotkey parsing -----------------------------------------------------
@@ -399,3 +401,116 @@ def test_keeper_starts_out_stopped():
     keeper = Keeper()
     assert not keeper.running
     assert keeper.remaining is None
+
+
+# --- background / tray ---------------------------------------------------
+
+
+@pytest.fixture
+def tray_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(tray, "config_dir", lambda: tmp_path)
+    return tmp_path
+
+
+def test_background_command_defaults_to_the_last_session():
+    command = tray.background_command()
+    assert command[-1] == "--tray"
+    assert "--profile" not in command
+    assert "--start" not in command
+
+
+def test_background_command_carries_the_running_state():
+    command = tray.background_command(profile="grind", click=True, keeper=True)
+    assert command[-4:] == ["--profile", "grind", "--start"] + ["--stay-online"]
+
+
+def test_background_command_runs_the_module_from_a_source_checkout():
+    assert tray.background_command()[:3] == [sys.executable, "-m", "autoclicker"]
+
+
+def test_background_command_runs_the_binary_when_frozen(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert tray.background_command()[:1] == [sys.executable]
+
+
+def test_no_pid_file_means_nothing_is_running(tray_dir):
+    assert tray.background_pid() is None
+
+
+def test_a_dead_pid_does_not_count_as_running(tray_dir):
+    # PID 1 exists everywhere, so use one nothing can plausibly hold.
+    (tray_dir / tray.PID_FILE).write_text("2147483646", encoding="utf-8")
+    assert tray.background_pid() is None
+
+
+def test_a_junk_pid_file_does_not_count_as_running(tray_dir):
+    (tray_dir / tray.PID_FILE).write_text("not a pid", encoding="utf-8")
+    assert tray.background_pid() is None
+
+
+def test_our_own_pid_does_not_count_as_a_second_instance(tray_dir):
+    # The tray process must not mistake its own file for someone else's.
+    (tray_dir / tray.PID_FILE).write_text(str(os.getpid()), encoding="utf-8")
+    assert tray.background_pid() is None
+
+
+def test_a_live_pid_counts_as_running(tray_dir, monkeypatch):
+    monkeypatch.setattr(tray, "_process_alive", lambda pid: True)
+    (tray_dir / tray.PID_FILE).write_text("4242", encoding="utf-8")
+    assert tray.background_pid() == 4242
+
+
+def test_launch_background_refuses_a_second_instance(tray_dir, monkeypatch):
+    monkeypatch.setattr(tray, "_process_alive", lambda pid: True)
+    (tray_dir / tray.PID_FILE).write_text("4242", encoding="utf-8")
+    spawned = []
+    monkeypatch.setattr(tray, "_spawn", lambda *a, **k: spawned.append(a) or "")
+
+    error = tray.launch_background()
+    assert "already running" in error
+    assert spawned == []
+
+
+def test_stop_background_says_so_when_nothing_is_running(tray_dir):
+    assert tray.stop_background() == "No background instance is running."
+
+
+def test_pid_file_round_trip(tray_dir, monkeypatch):
+    tray._claim_pid_file()
+    assert (tray_dir / tray.PID_FILE).read_text(encoding="utf-8") == str(os.getpid())
+    tray._release_pid_file()
+    assert not (tray_dir / tray.PID_FILE).exists()
+
+
+def test_release_leaves_another_instances_pid_file_alone(tray_dir):
+    (tray_dir / tray.PID_FILE).write_text("4242", encoding="utf-8")
+    tray._release_pid_file()
+    assert (tray_dir / tray.PID_FILE).exists()
+
+
+def test_runner_starts_idle():
+    runner = tray.BackgroundRunner(Config())
+    assert runner.status_text() == "Idle"
+    assert runner.icon_state == "idle"
+
+
+def test_runner_reports_a_click_run():
+    runner = tray.BackgroundRunner(Config())
+    runner.engine.state = State.RUNNING
+    runner.engine.click_count = 1234
+    assert runner.status_text() == "Clicking - 1,234 clicks"
+    assert runner.icon_state == "clicking"
+    assert runner.tooltip().startswith("Advanced Auto Clicker - ")
+
+
+def test_runner_reports_a_keeper_run():
+    runner = tray.BackgroundRunner(Config())
+    runner.keeper.state = State.RUNNING
+    runner.keeper.nudge_count = 7
+    assert runner.status_text() == "Staying online - 7 nudges"
+    assert runner.icon_state == "keeper"
+
+
+def test_runner_refuses_to_run_without_an_input_backend(monkeypatch):
+    monkeypatch.setattr(tray.backend, "AVAILABLE", False)
+    assert tray.BackgroundRunner(Config()).run() == 1

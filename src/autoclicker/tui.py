@@ -22,7 +22,7 @@ from textual.widgets import (
     TabPane,
 )
 
-from . import backend, hotkeys, session
+from . import backend, hotkeys, session, tray
 from .config import LAST_SESSION, Config, config_dir, list_profiles, profile_path, safe_name
 from .engine import Engine, Keeper, State, StopReason
 from .picker import LocationPicker
@@ -165,6 +165,7 @@ class AutoClickerApp(App):
         ("ctrl+r", "toggle", "Start/Stop"),
         ("ctrl+t", "keeper_toggle", "Stay online"),
         ("ctrl+s", "save_session", "Save"),
+        ("ctrl+b", "to_background", "To tray"),
         ("f1", "show_help", "Help"),
         ("ctrl+q", "quit", "Quit"),
     ]
@@ -421,6 +422,17 @@ class AutoClickerApp(App):
         problem = backend.diagnose()
         if problem:
             self.notify(problem, severity="warning", title="Heads up", timeout=15)
+
+        # Two processes owning the same global hotkeys is nobody's idea of fun.
+        pid = tray.background_pid()
+        if pid is not None:
+            self.notify(
+                f"A background instance is already running (PID {pid}). Stop it with "
+                "'autoclicker --stop-background' before starting a run here.",
+                severity="warning",
+                title="Heads up",
+                timeout=15,
+            )
 
     def on_unmount(self) -> None:
         self.engine.shutdown()
@@ -727,6 +739,36 @@ class AutoClickerApp(App):
         self._q("#btn-keeper-start", Button).label = "Stop staying online"
         self._q("#btn-keeper-stop", Button).disabled = False
 
+    def action_to_background(self) -> None:
+        """Hand the current session to a tray process and close the window."""
+        config = self._collect_config()
+        if self.engine.running:
+            # A run in flight has to survive the handover, so it has to be valid.
+            problems = config.validate()
+            if problems:
+                self.notify("\n".join(problems), severity="error", title="Cannot start")
+                return
+
+        pid = tray.background_pid()
+        if pid is not None:
+            self.notify(
+                f"A background instance is already running (PID {pid}).",
+                severity="error",
+                title="Cannot start",
+            )
+            return
+
+        config.save(LAST_SESSION)
+        clicking, keeping = self.engine.running, self.keeper.running
+        self.engine.stop()
+        self.keeper.stop()
+
+        error = tray.launch_background(click=clicking, keeper=keeping)
+        if error:
+            self.notify(error, severity="error", title="Cannot start")
+            return
+        self.exit("background")
+
     def action_save_session(self) -> None:
         self._collect_config().save(LAST_SESSION)
         self.notify("Settings saved.", title="Saved")
@@ -1003,9 +1045,19 @@ HELP_TEXT = f"""\
 
 [b]In-app keys[/b]
   Ctrl+R  start / stop        Ctrl+S  save settings
-  Ctrl+T  stay online         Ctrl+Q  quit
-  F1      this help
+  Ctrl+T  stay online         Ctrl+B  send to the system tray
+  F1      this help           Ctrl+Q  quit
   Tab / Shift+Tab move between fields, arrow keys change radio buttons.
+
+[b]Background mode[/b]
+  [b]Ctrl+B[/b] hands whatever is set up here to a process with no terminal at
+  all, so you can close this window and carry on. On Windows it lives in the
+  system tray: left-click starts and stops clicking, right-click has the rest
+  of the menu, and "Open settings window" brings this back. Elsewhere it runs
+  headless unless pystray is installed, and the global hotkeys still work
+  either way. Start one without opening this window at all with
+  [b]autoclicker --background[/b], and end it with
+  [b]autoclicker --stop-background[/b].
 
 [b]Idle mode[/b]
   Holds clicks back while you are actually using the machine, and resumes
