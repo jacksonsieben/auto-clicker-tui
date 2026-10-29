@@ -30,6 +30,10 @@ macOS and Linux, installs without admin rights, and needs no GUI toolkit.
 - **Auto-stop timer** — stop automatically after a set duration
 - **Stay online** — keep Microsoft Teams (and Slack, and the rest) from
   flipping you to *Away*, with its own auto-stop timer
+- **Working hours** — stay online only from, say, 09:00-12:00 and
+  13:00-18:00 on weekdays, and let Teams show you as *Away* the rest of the time
+- **Start with Windows** — come up in the tray at login and stay online on
+  your working hours, with no window to open (macOS and Linux too)
 - **Stops when you lock or suspend** the machine, so nothing carries on
   clicking without you
 - **Global hotkeys** that work while another window has focus (default `F6` /
@@ -103,6 +107,10 @@ autoclicker --background        # run with no terminal, in the system tray
 autoclicker --background --start          # ...and start clicking straight away
 autoclicker --background --stay-online    # ...or start staying online
 autoclicker --stop-background   # stop the background instance
+
+autoclicker --autostart on      # start in the tray at login, staying online
+autoclicker --autostart off
+autoclicker --autostart status
 ```
 
 ### Keys

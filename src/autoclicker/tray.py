@@ -21,11 +21,13 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from . import backend, hotkeys
 from .config import LAST_SESSION, Config, config_dir
 from .engine import Engine, Keeper, State, StopReason
+from .schedule import format_moment
 
 PID_FILE = "background.pid"
 POLL_INTERVAL = 1.0
@@ -242,6 +244,17 @@ def launch_tui(profile: str | None = None) -> str:
     return "No terminal emulator found - run 'autoclicker' yourself to change settings."
 
 
+def keeper_off_hours_text(keeper: Keeper) -> str:
+    """"outside working hours, resumes Mon 09:00", for a keeper in OFF_HOURS."""
+    if keeper.schedule is None:
+        return "outside working hours"
+    now = datetime.now()
+    start = keeper.schedule.next_start(now)
+    if start is None:
+        return "outside working hours"
+    return f"outside working hours, resumes {format_moment(start, now)}"
+
+
 # -- the icon -------------------------------------------------------------
 
 ICON_COLORS = {
@@ -292,6 +305,8 @@ class BackgroundRunner:
             return "clicking"
         if self.engine.state is State.WAITING:
             return "waiting"
+        if self.keeper.state is State.OFF_HOURS:
+            return "waiting"
         if self.keeper.running:
             return "keeper"
         return "idle"
@@ -304,6 +319,8 @@ class BackgroundRunner:
             return f"Clicking - {clicks}"
         if self.keeper.running:
             nudges = f"{self.keeper.nudge_count:,} nudges"
+            if self.keeper.state is State.OFF_HOURS:
+                return f"Staying online - {keeper_off_hours_text(self.keeper)}"
             if self.keeper.state is State.WAITING:
                 return f"Staying online (you are active) - {nudges}"
             return f"Staying online - {nudges}"

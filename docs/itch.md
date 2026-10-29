@@ -46,6 +46,10 @@ Revenue share is set under *Settings → Revenue sharing*; the default is 10%.
 > ### Stay online
 > - Keeps your status on *Available* by tapping a key no app uses (`F15`):
 >   your cursor never moves and nothing gets typed
+> - **Working hours:** stay online 09:00-12:00 and 13:00-18:00 on weekdays,
+>   and show as *Away* the rest of the time
+> - **Starts with Windows:** sits in the tray from login and follows your
+>   working hours, nothing to remember
 > - Auto-stop timer: stay online for the next 2 hours, then stop
 > - `F8` toggles it from any window
 >

@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --background/--tray: begin staying online straight away",
     )
     background.add_argument(
+        "--autostart",
+        choices=["on", "off", "status"],
+        help="start in the background and stay online when you log in "
+        "(follows the schedule on the Stay online tab)",
+    )
+    background.add_argument(
         "--stop-background",
         action="store_true",
         help="stop the running background instance",
@@ -106,6 +112,22 @@ def main(argv: list[str] | None = None) -> int:
         print("Input control is available.")
         print(lock_line)
         print(tray_line)
+        return 0
+
+    if args.autostart:
+        from . import autostart
+
+        if args.autostart == "on":
+            error = autostart.enable()
+        elif args.autostart == "off":
+            error = autostart.disable()
+        else:
+            error = ""
+        if error:
+            print(error, file=sys.stderr)
+            return 1
+        state = "on" if autostart.is_enabled() else "off"
+        print(f"Start at login is {state} ({autostart.location()}).")
         return 0
 
     if args.stop_background:

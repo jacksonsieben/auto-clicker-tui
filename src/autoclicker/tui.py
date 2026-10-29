@@ -22,13 +22,17 @@ from textual.widgets import (
     TabPane,
 )
 
-from . import backend, hotkeys, session, tray
+import sys
+
+from . import autostart, backend, hotkeys, session, tray
 from .config import LAST_SESSION, Config, config_dir, list_profiles, profile_path, safe_name
 from .engine import Engine, Keeper, State, StopReason
 from .picker import LocationPicker
+from .schedule import ScheduleError
 from .version import __version__
 
 POLL_INTERVAL = 0.1
+LOGIN_LABEL = "Windows" if sys.platform == "win32" else "your computer"
 
 
 def _int_value(widget: Input, default: int = 0) -> int:
@@ -345,6 +349,41 @@ class AutoClickerApp(App):
             )
 
             yield Rule()
+            yield Label("Working hours", classes="section")
+            with Horizontal(classes="toggle-row"):
+                yield Switch(id="keeper-schedule-switch")
+                yield Label(
+                    "Only stay online during these hours",
+                    classes="toggle-label",
+                )
+            with Horizontal(classes="field-row"):
+                with Vertical(classes="field-wide"):
+                    yield Label("Hours")
+                    yield Input(
+                        id="keeper-schedule-times",
+                        placeholder="09:00-12:00, 13:00-18:00",
+                        classes="schedule-input",
+                    )
+                with Vertical(classes="field-wide"):
+                    yield Label("Days")
+                    yield Input(
+                        id="keeper-schedule-days",
+                        placeholder="mon-fri",
+                        classes="schedule-input",
+                    )
+            yield Static("", id="keeper-schedule-status", classes="hint")
+
+            yield Rule()
+            yield Label(f"Start with {LOGIN_LABEL}", classes="section")
+            with Horizontal(classes="toggle-row"):
+                yield Switch(id="autostart-switch")
+                yield Label(
+                    "Start in the background when I log in, and stay online",
+                    classes="toggle-label",
+                )
+            yield Static("", id="autostart-status", classes="hint")
+
+            yield Rule()
             yield Label("Auto-stop timer", classes="section")
             with Horizontal(classes="toggle-row"):
                 yield Switch(id="keeper-timer-switch")
@@ -415,6 +454,7 @@ class AutoClickerApp(App):
         self._main_screen = self.screen
         self._status_line = self._q("#status-line", Static)
         self._apply_config(self.config_model)
+        self._q("#autostart-switch", Switch).value = autostart.is_enabled()
         self.refresh_profiles()
         self._register_hotkeys()
         self.set_interval(POLL_INTERVAL, self._tick)
@@ -481,6 +521,9 @@ class AutoClickerApp(App):
         self._q("#lock-switch", Switch).value = config.stop_on_lock
         self._q("#keeper-idle-switch", Switch).value = config.keeper_only_when_idle
         self._q("#keeper-timer-switch", Switch).value = config.keeper_timer_enabled
+        self._q("#keeper-schedule-switch", Switch).value = config.keeper_schedule_enabled
+        set_value("keeper-schedule-times", config.keeper_schedule_times)
+        set_value("keeper-schedule-days", config.keeper_schedule_days)
 
         self._sync_enabled_state()
 
@@ -531,6 +574,9 @@ class AutoClickerApp(App):
             keeper_timer_hours=_int_value(self._q("#keeper-timer-hours", Input)),
             keeper_timer_minutes=_int_value(self._q("#keeper-timer-minutes", Input)),
             keeper_timer_seconds=_int_value(self._q("#keeper-timer-seconds", Input)),
+            keeper_schedule_enabled=self._q("#keeper-schedule-switch", Switch).value,
+            keeper_schedule_times=self._q("#keeper-schedule-times", Input).value.strip(),
+            keeper_schedule_days=self._q("#keeper-schedule-days", Input).value.strip(),
         )
         self.config_model = config
         return config
@@ -558,7 +604,13 @@ class AutoClickerApp(App):
         keeper_idle_on = self._q("#keeper-idle-switch", Switch).value
         self._q("#keeper-idle-delay", Input).disabled = not keeper_idle_on
 
-        keeper_timer_on = self._q("#keeper-timer-switch", Switch).value
+        schedule_on = self._q("#keeper-schedule-switch", Switch).value
+        for widget_id in ("#keeper-schedule-times", "#keeper-schedule-days"):
+            self._q(widget_id, Input).disabled = not schedule_on
+
+        # With working hours the schedule decides when it runs, not a timer.
+        self._q("#keeper-timer-switch", Switch).disabled = schedule_on
+        keeper_timer_on = self._q("#keeper-timer-switch", Switch).value and not schedule_on
         for widget_id in (
             "#keeper-timer-hours",
             "#keeper-timer-minutes",
@@ -608,7 +660,27 @@ class AutoClickerApp(App):
             f"{nudge} every {_format_duration(config.keeper_interval)}."
         )
 
-        if config.keeper_timer_enabled:
+        schedule_status = self._q("#keeper-schedule-status", Static)
+        if not config.keeper_schedule_enabled:
+            schedule_status.update("Off - it stays online whenever it is running.")
+        else:
+            try:
+                schedule = config.keeper_schedule
+            except ScheduleError as exc:
+                schedule_status.update(f"[red]{exc}[/red]")
+            else:
+                schedule_status.update(
+                    f"Stays online {schedule.describe()}, and waits outside them. "
+                    "Days can be mon-fri, sat,sun or daily."
+                )
+
+        self._q("#autostart-status", Static).update(self._autostart_hint(config))
+
+        if config.keeper_schedule_enabled:
+            self._q("#keeper-timer-status", Static).update(
+                "Not used while working hours are on."
+            )
+        elif config.keeper_timer_enabled:
             self._q("#keeper-timer-status", Static).update(
                 f"Will stop after {_format_duration(config.keeper_timer_duration)}."
             )
@@ -616,6 +688,18 @@ class AutoClickerApp(App):
             self._q("#keeper-timer-status", Static).update(
                 "Timer is off - it will keep going until you stop it."
             )
+
+    def _autostart_hint(self, config: Config) -> str:
+        if not autostart.is_enabled():
+            return f"Off. Turn it on to start staying online when {LOGIN_LABEL} starts."
+        if config.keeper_schedule_enabled:
+            what = "stays online during the working hours above"
+        else:
+            what = "stays online all day (no working hours set)"
+        return (
+            f"On: at login it starts in the tray and {what}. Settings are saved "
+            "when you quit or start a run; if you move the app, turn this off and on."
+        )
 
     def _lock_hint(self, config: Config) -> str:
         """Explain what this machine can actually detect."""
@@ -868,7 +952,9 @@ class AutoClickerApp(App):
     def _keeper_status_parts(self) -> list[str]:
         keeper = self.keeper
         parts = []
-        if keeper.state is State.WAITING:
+        if keeper.state is State.OFF_HOURS:
+            parts.append(f"[blue]Staying online - {tray.keeper_off_hours_text(keeper)}[/blue]")
+        elif keeper.state is State.WAITING:
             parts.append("[yellow]Staying online - you are active, nothing to do[/yellow]")
         else:
             parts.append("[green]Staying online[/green]")
@@ -926,7 +1012,29 @@ class AutoClickerApp(App):
         self._sync_enabled_state()
 
     @on(Input.Changed, ".number")
+    @on(Input.Changed, ".schedule-input")
     def _number_changed(self) -> None:
+        self._refresh_static_hints()
+
+    @on(Switch.Changed, "#autostart-switch")
+    def _autostart_changed(self, event: Switch.Changed) -> None:
+        if event.value == autostart.is_enabled():
+            return  # set from the current state, not by the user
+        if event.value:
+            # The login entry runs the last session, so it has to be current.
+            config = self._collect_config()
+            problems = config.validate_keeper()
+            if problems:
+                self.notify("\n".join(problems), severity="error", title="Cannot turn on")
+                event.switch.value = False
+                return
+            config.save(LAST_SESSION)
+            error = autostart.enable()
+        else:
+            error = autostart.disable()
+        if error:
+            self.notify(error, severity="error", title="Start with " + LOGIN_LABEL)
+            event.switch.value = autostart.is_enabled()
         self._refresh_static_hints()
 
     @on(Input.Submitted, ".hotkey-input")
@@ -1076,6 +1184,17 @@ HELP_TEXT = f"""\
   Available. Leave "only when idle" on and it stands aside whenever you are
   genuinely typing. It keeps running while your screen is locked, which is
   usually the point, but stops if the machine suspends.
+
+[b]Working hours[/b]
+  Set hours like [b]09:00-12:00, 13:00-18:00[/b] and days like [b]mon-fri[/b], and
+  Stay online runs all day but only nudges inside those hours. Outside them
+  Teams is free to show you as Away. With working hours on, the auto-stop
+  timer is not used and a suspend does not stop it.
+
+[b]Start with Windows[/b]
+  The switch on the Stay online tab starts the app in the tray when you log
+  in, staying online on your working hours. From a terminal:
+  [b]autoclicker --autostart on[/b] / [b]off[/b] / [b]status[/b].
 
 [b]Locking and suspending[/b]
   Clicking stops when the screen locks or the machine suspends, so you never
