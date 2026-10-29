@@ -12,6 +12,8 @@ import sys
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
+from .schedule import Schedule, ScheduleError
+
 APP_NAME = "advanced-auto-clicker"
 LAST_SESSION = "last_session"
 CONFIG_VERSION = 3
@@ -87,6 +89,10 @@ class Config:
     keeper_timer_hours: int = 8
     keeper_timer_minutes: int = 0
     keeper_timer_seconds: int = 0
+    # Working hours: only nudge inside these windows, on these days
+    keeper_schedule_enabled: bool = False
+    keeper_schedule_times: str = "09:00-12:00, 13:00-18:00"
+    keeper_schedule_days: str = "mon-fri"
 
     # Global hotkeys
     hotkey_toggle: str = "f6"
@@ -124,6 +130,11 @@ class Config:
             + self.keeper_timer_seconds
         )
 
+    @property
+    def keeper_schedule(self) -> Schedule:
+        """The parsed working hours. Raises ScheduleError on bad text."""
+        return Schedule.parse(self.keeper_schedule_times, self.keeper_schedule_days)
+
     def validate(self) -> list[str]:
         """Return human-readable problems that block a run."""
         problems = []
@@ -142,7 +153,12 @@ class Config:
         problems = []
         if self.keeper_interval_minutes * 60 + self.keeper_interval_seconds < 1:
             problems.append("Nudge interval must be at least 1 second.")
-        if self.keeper_timer_enabled and self.keeper_timer_duration <= 0:
+        if self.keeper_schedule_enabled:
+            try:
+                self.keeper_schedule
+            except ScheduleError as exc:
+                problems.append(f"Schedule: {exc}")
+        elif self.keeper_timer_enabled and self.keeper_timer_duration <= 0:
             problems.append("Auto-stop timer is on but the duration is zero.")
         if self.keeper_only_when_idle and self.keeper_idle_delay < 0:
             problems.append("Idle threshold cannot be negative.")
