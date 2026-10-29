@@ -40,11 +40,12 @@ macOS and Linux, installs without admin rights, and needs no GUI toolkit.
 
 ## Install
 
-### Option 1 — standalone binary (no Python, no admin)
+### Option 1 — ready-to-run binary (no Python, no admin)
 
-Download the file for your platform from the
-[latest release](https://github.com/jacksonsieben/auto-clicker-tui/releases/latest)
-and run it. Nothing is installed and no admin rights are required.
+Get the file for your platform from
+**[itch.io](https://jacksonsieben.itch.io/stay-online-auto-clicker)** and run
+it. Nothing is installed and no admin rights are required. Buying it there is
+what keeps the project maintained; the source stays free (Option 2).
 
 | Platform | File |
 | --- | --- |
@@ -65,27 +66,21 @@ chmod +x ./autoclicker-macos
 > not unpack itself into `%TEMP%`, which is what most application-control
 > policies actually block.
 
-### Option 2 — run it with `uvx` (no install at all)
+### Option 2 — from source, with pip
 
-If [`uv`](https://docs.astral.sh/uv/) is available:
-
-```bash
-uvx advanced-auto-clicker-tui
-```
-
-### Option 3 — pip
+Needs Python 3.9 or newer.
 
 **Windows and macOS:**
 
 ```bash
-pip install --user advanced-auto-clicker-tui
+pip install --user git+https://github.com/jacksonsieben/auto-clicker-tui.git
 autoclicker
 ```
 
 **Linux:**
 
 ```bash
-pip install --user advanced-auto-clicker-tui && pip install --user --no-deps pynput
+pip install --user git+https://github.com/jacksonsieben/auto-clicker-tui.git && pip install --user --no-deps pynput
 autoclicker
 ```
 
@@ -93,7 +88,7 @@ The extra step exists because `pynput` declares a dependency on `evdev`, which
 ships source-only and needs a C compiler plus kernel headers. The X11 backend
 this app uses never imports it, so `--no-deps` gives you a working install with
 no build step. If you do have a toolchain and prefer one command, use
-`pip install --user 'advanced-auto-clicker-tui[linux-full]'`.
+`pip install --user 'advanced-auto-clicker-tui[linux-full] @ git+https://github.com/jacksonsieben/auto-clicker-tui.git'`.
 
 ## Usage
 
@@ -280,7 +275,10 @@ make onedir    # folder fallback  -> dist/autoclicker-<platform>-folder.zip
 ```
 
 `.github/workflows/build.yml` runs the same script on Windows, macOS and Linux
-and attaches the results to a GitHub release when a `v*` tag is pushed.
+and, when a `v*` tag is pushed, creates a GitHub release with the notes and
+pushes the binaries to itch.io with [butler](https://itch.io/docs/butler/). The
+push needs a `BUTLER_API_KEY` secret and an `ITCH_TARGET` variable
+(`user/game`); without them the release job skips it.
 
 ## License
 

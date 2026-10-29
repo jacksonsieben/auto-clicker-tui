@@ -95,17 +95,47 @@ jobs:
             dist/autoclicker-windows.exe
             dist/autoclicker-windows-folder.zip
           if-no-files-found: ignore
+          # The ready-made binaries are sold on itch.io; keep the CI copies
+          # only as long as the release job needs them.
+          retention-days: 1
 
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    env:
+      # Repository secret: an API key from https://itch.io/user/settings/api-keys
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+      # Repository variable: the itch.io page, as "user/game"
+      ITCH_TARGET: ${{ vars.ITCH_TARGET }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+
+      # Release notes only. The binaries go to itch.io, not to the release.
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
           generate_release_notes: true
+
+      - name: Push to itch.io
+        if: env.BUTLER_API_KEY != '' && env.ITCH_TARGET != ''
+        run: |
+          curl -sSfL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler && chmod +x butler/butler
+          version="${GITHUB_REF_NAME#v}"
+          # One folder per itch.io channel: each becomes its own download.
+          mkdir -p ch/windows ch/windows-portable ch/mac ch/linux
+          cp artifacts/autoclicker-windows.exe ch/windows/
+          cp artifacts/autoclicker-macos ch/mac/
+          cp artifacts/autoclicker-linux ch/linux/
+          chmod +x ch/mac/* ch/linux/*
+          if [ -f artifacts/autoclicker-windows-folder.zip ]; then
+            unzip -q artifacts/autoclicker-windows-folder.zip -d ch/windows-portable
+          fi
+          for channel in windows windows-portable mac linux; do
+            if [ -n "$(ls -A "ch/$channel")" ]; then
+              butler/butler push "ch/$channel" "$ITCH_TARGET:$channel" --userversion "$version"
+            fi
+          done
