@@ -282,11 +282,19 @@ make build     # one-file binary  -> dist/autoclicker-<platform>
 make onedir    # folder fallback  -> dist/autoclicker-<platform>-folder.zip
 ```
 
-`.github/workflows/build.yml` runs the same script on Windows, macOS and Linux
-and, when a `v*` tag is pushed, creates a GitHub release with the notes and
-pushes the binaries to itch.io with [butler](https://itch.io/docs/butler/). The
-push needs a `BUTLER_API_KEY` secret and an `ITCH_TARGET` variable
-(`user/game`); without them the release job skips it.
+`.github/workflows/build.yml` runs the same script on Windows, macOS and Linux.
+
+## Releasing
+
+Releases come from [CHANGELOG.md](CHANGELOG.md). Every pull request into
+`master` adds a section on top with a new version and bumps
+`src/autoclicker/version.py` to match; the `changelog` check fails until it
+does, and a pull request that should not release anything gets the
+`no release` label instead. Merging releases the top version: CI tags the
+merge commit, creates the GitHub release with that section as its notes, and
+pushes the binaries to itch.io with [butler](https://itch.io/docs/butler/).
+The itch.io push needs a `BUTLER_API_KEY` secret and an `ITCH_TARGET`
+variable (`user/game`); without them the release job skips it.
 
 ## License
 
