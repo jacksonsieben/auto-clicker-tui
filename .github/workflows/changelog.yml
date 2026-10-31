@@ -1,0 +1,30 @@
+name: changelog
+
+# Required check for merging into master: the branch must add a new version
+# section on top of CHANGELOG.md, because merging releases it. See the
+# comment at the top of CHANGELOG.md.
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Fetch the base branch
+        run: git fetch --depth=1 origin "${{ github.base_ref }}"
+      - name: Check the new release section
+        env:
+          NO_RELEASE: ${{ contains(github.event.pull_request.labels.*.name, 'no release') }}
+        run: |
+          flag=""
+          if [ "$NO_RELEASE" = "true" ]; then flag="--no-release"; fi
+          python scripts/changelog.py check --base "origin/${{ github.base_ref }}" $flag

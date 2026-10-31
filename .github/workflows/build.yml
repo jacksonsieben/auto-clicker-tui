@@ -3,14 +3,40 @@ name: build
 on:
   push:
     branches: [master]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Two merges in a row must not race to release; the second waits its turn.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # A push to master releases the top version of CHANGELOG.md, unless its tag
+  # already exists (a merge labelled "no release" leaves the changelog alone).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        run: |
+          python scripts/changelog.py consistent
+          version="$(python scripts/changelog.py version)"
+          release=false
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/master" ] \
+             && [ -z "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
+            release=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "Version $version, release: $release"
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -100,31 +126,38 @@ jobs:
           retention-days: 1
 
   release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [plan, build]
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     env:
+      VERSION: ${{ needs.plan.outputs.version }}
       # Repository secret: an API key from https://itch.io/user/settings/api-keys
       BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
       # Repository variable: the itch.io page, as "user/game"
       ITCH_TARGET: ${{ vars.ITCH_TARGET }}
     steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/changelog.py notes "$VERSION" > release-notes.md
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      # Release notes only. The binaries go to itch.io, not to the release.
+      # Creates the tag on this commit. Notes only: the binaries go to itch.io.
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          tag_name: v${{ needs.plan.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: v${{ needs.plan.outputs.version }}
+          body_path: release-notes.md
 
       - name: Push to itch.io
         if: env.BUTLER_API_KEY != '' && env.ITCH_TARGET != ''
         run: |
           curl -sSfL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip -q butler.zip -d butler && chmod +x butler/butler
-          version="${GITHUB_REF_NAME#v}"
+          version="$VERSION"
           # One folder per itch.io channel: each becomes its own download.
           mkdir -p ch/windows ch/windows-portable ch/mac ch/linux
           cp artifacts/autoclicker-windows.exe ch/windows/
